@@ -1,0 +1,10 @@
+venv/
+.env
+chroma_pdf/
+__pycache__/
+*.pyc
+scratch/
+practice.py
+vector_db_refference.py
+data/*
+!data/.gitkeep
