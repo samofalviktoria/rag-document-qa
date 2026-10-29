@@ -13,18 +13,18 @@ def get_db():
 
 
 def file_hash(path):
-    """Відбиток вмісту файлу: зміниться хоч на один байт, зміниться і хеш."""
+    """Fingerprint of the file content: change a single byte and the hash changes."""
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def indexed_files(db):
-    """Функція повертає словник {ім'я файлу: хеш}"""
+    """Returns a dict {file name: hash}."""
     data = db.get(where={"kind": "marker"}, include=["metadatas"])
     return {m["source"]: m["hash"] for m in data["metadatas"]}
 
 
 def delete_file_records(db, name):
-    """Видаляє всі старі записи з файлу"""
+    """Deletes all old records of the file."""
     res = db.get(where={"source": name})
     if res["ids"]:
         db.delete(ids=res["ids"])
@@ -41,16 +41,16 @@ def add_marker(db, name, hash_value):
             break
         except Exception as e:
             if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                print(f" Ліміт запитів, чекаю {config.PAUSE_SECONDS} с...")
+                print(f" Rate limit reached, waiting {config.PAUSE_SECONDS} s...")
                 time.sleep(config.PAUSE_SECONDS)
             else:
                 raise
     else:
-        raise RuntimeError("Не вдалося записати маркер після 5 спроб")   
+        raise RuntimeError("Failed to write the marker after 5 attempts") 
 
 
 def add_chunks(db, chunks):
-    """Додає чанки порціями, чекає і повторює спробу при ліміті запитів (429)."""
+    """Adds chunks in batches; waits and retries when the rate limit (429) is hit."""
     batch_size = config.BATCH_SIZE
     for i in range(0, len(chunks), batch_size):
         batch = chunks[i:i + batch_size]
@@ -61,13 +61,13 @@ def add_chunks(db, chunks):
                 break
             except Exception as e:
                 if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                    print(f"  Ліміт запитів, чекаю {config.PAUSE_SECONDS} с...")
+                    print(f"  Rate limit reached, waiting {config.PAUSE_SECONDS} s...")
                     time.sleep(config.PAUSE_SECONDS)
                 else:
                     raise
         else:
-            raise RuntimeError("не вдалося додати порцію після 5 спроб")
-        print(f"  Додано {min(i + batch_size, len(chunks))}/{len(chunks)}")
+            raise RuntimeError("Failed to add the batch after 5 attempts")
+        print(f"  Added {min(i + batch_size, len(chunks))}/{len(chunks)}")
         if i + batch_size < len(chunks):
             time.sleep(config.PAUSE_SECONDS)
 
@@ -79,7 +79,7 @@ def index_new_files():
         if p.suffix.lower() in config.SUPPORTED_EXTENSIONS
     )
     if not files:
-        print(f"У папці {config.DATA_DIR} немає файлів PDF або TXT.")
+        print(f"No PDF, TXT or DOCX files found in {config.DATA_DIR}.")
         return
 
     db = get_db()
@@ -87,25 +87,25 @@ def index_new_files():
     disk_names = {f.name for f in files}
     orphans = set(done) - disk_names
     for name in orphans:
-        print(f"Видаляю осиротілі записи файлу {name}")
+        print(f"Removing orphaned records for {name}")
         delete_file_records(db, name)
     hashes = {f: file_hash(f) for f in files}
     new_files = [f for f in files if done.get(f.name) != hashes[f]]
     if not new_files:
-        print("Нових або змінених файлів немає, уже все проіндексовано.")
+        print("No new or changed files. Everything is already indexed.")
         return
     for f in new_files:
-        print(f"Обробляю {f.name}...")
+        print(f"Processing {f.name}...")
         try:
             docs = load_file(f)
         except Exception as e:
-            print(f"  Пропускаю {f.name}: {e}")
+            print(f"  Skipping {f.name}: {e}")
             continue
         chunks = split_documents(docs)
         for c in chunks:
             c.metadata["kind"] = "chunk"
-        print(f"  Сторінок: {len(docs)}, чанків: {len(chunks)}")
+        print(f"  Documents: {len(docs)}, chunks: {len(chunks)}")
         delete_file_records(db, f.name)
         add_chunks(db, chunks)
         add_marker(db, f.name, hashes[f])
-    print("Готово.")
+    print("Done.")

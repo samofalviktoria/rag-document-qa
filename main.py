@@ -4,17 +4,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-USAGE = """Використання:
-  python main.py index - проіндексувати нові файли з папки data
-  python main.py ask   - ставити запитання по документах"""
+USAGE = """Usage:
+  python main.py index - index new files from the data folder
+  python main.py ask   - ask questions about your documents"""
 
 
 def check_key():
     key = os.getenv("GOOGLE_API_KEY")
     if not key:
-        sys.exit("Помилка: не знайдено GOOGLE_API_KEY. Створіть файл .env (див. .env. example).")
+        sys.exit("Error: GOOGLE_API_KEY not found. Create a .env file (see .env.example).")
     if not key.isascii():
-        sys.exit("Помилка: ключ у .env містить недопустимі символи. Перепишіть його вручну.")
+        sys.exit("Error: the key in .env contains invalid characters. Retype it manually.")
 
 
 def main():

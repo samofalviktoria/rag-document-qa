@@ -13,14 +13,14 @@ def load_file(path: Path):
     elif suffix == ".docx":
         docs = Docx2txtLoader(str(path)).load()
     else:
-        raise ValueError(f"Не підтримується розширення файлу {suffix}")
-    # Склеюємо слова розділені переносами
+        raise ValueError(f"Unsupported file extension: {suffix}")
+    # Join words split by hyphenation at line breaks
     for d in docs:
         d.page_content = d.page_content.replace("-\n", "")
         d.metadata["source"] = path.name
     docs = [d for d in docs if d.page_content.strip()]
     if not docs:
-        raise ValueError("У файлі не знайдено тексту (можливо це скан без розпізнавання)")
+        raise ValueError("No text found in the file (it may be a scan without OCR)")
     return docs
 
 

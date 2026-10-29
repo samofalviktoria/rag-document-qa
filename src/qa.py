@@ -1,26 +1,29 @@
 import re
+import logging
 from pathlib import Path
 from langchain_google_genai import ChatGoogleGenerativeAI
 from src import config
 from src.vectordb import get_db
 
-NOT_FOUND = "Не знайшов цієї інформації в документах."
+logging.getLogger("google_genai.models").setLevel(logging.ERROR)
 
-PROMPT = """Ти асистент, який відповідає на запитання по документах.
-Використовуй ЛИШЕ фрагменти нижче. Якщо в них є лише часткова або непряма відповідь,
-скажи, що саме знайдено, а чого бракує. Якщо фрагменти не стосуються запитання, скажи лише: "{not_found}"
-Відповідай мовою запитання, коротко й точно.
-Пиши простим текстом, без markdown і без формул LaTeX.
-Якщо відповідь є, після неї з нового рядка пиши: ДЖЕРЕЛА: і номери фрагментів, які ти використав, через кому.
+NOT_FOUND = "I could not find this information in the documents."
 
-Фрагменти:
+PROMPT = """You are an assistant that answers questions about documents.
+Use ONLY the fragments below. If they contain only a partial or indirect answer,
+say what exactly was found and what is missing. If the fragments are not related to the question, say only: "{not_found}"
+Answer in the language of the question, briefly and precisely.
+Write plain text, without markdown and without LaTeX formulas.
+If there is an answer, after it write on a new line: SOURCES: and the numbers of the fragments you used, separated by commas.
+
+Fragments:
 {context}
 
-Запитання: {question}"""
+Question: {question}"""
 
 
 def format_sources(sources):
-    return ", ".join(f"{n}, стор. {p}" if p else n for n, p in sources)
+    return ", ".join(f"{n}, p. {p}" if p else n for n, p in sources)
 
 
 def answer_question(db, llm, question):
@@ -35,7 +38,7 @@ def answer_question(db, llm, question):
 
 
 def parse_answer(raw, docs):
-    match = re.search(r"ДЖЕРЕЛА:(.*)", raw, re.S)
+    match = re.search(r"SOURCES:(.*)", raw, re.S)
     if not match:
         return raw.strip(), []
     answer = raw[:match.start()].strip()
@@ -53,32 +56,32 @@ def parse_answer(raw, docs):
 def friendly_error(e):
     text = str(e)
     if "429" in text or "RESOURCE_EXHAUSTED" in text:
-        msg = "Перевищено ліміт запитів."
+        msg = "Rate limit exceeded."
         quota = re.search(r"'quotaId': '([^']+)'", text)
         delay = re.search(r"'retryDelay': '([^']+)'", text)
         if quota:
-            msg += f" Ліміт: {quota.group(1)}."
+            msg += f" Limit: {quota.group(1)}."
         if delay:
-            msg += f" Спробуйте через {delay.group(1)}."
+            msg += f" Try again in {delay.group(1)}."
         return msg
     if "API_KEY_INVALID" in text or "API key not valid" in text or "PERMISSION_DENIED" in text:
-        return "Ключ API недійсний або не має доступу. Перевірте GOOGLE_API_KEY у файлі .env."
-    return f"Сталася помилка: {text[:200]}"
+        return "The API key is invalid or has no access. Check GOOGLE_API_KEY in the .env file."
+    return f"An error occurred: {text[:200]}"
 
 
 def chat_loop():
     db = get_db()
     if not db.get(limit=1)["ids"]:
-        print("База порожня. Спочатку виконайте: python main.py index")
+        print("The database is empty. Run first: python main.py index")
         return
-    llm = ChatGoogleGenerativeAI(model=config.CHAT_MODEL, temperature=0)
-    print("Готово. Введіть запитання (або 'вихід').")
+    llm = ChatGoogleGenerativeAI(model=config.CHAT_MODEL)
+    print("Ready. Enter a question (or 'exit').")
     while True:
         try:
-            q = input("\nВаше запитання: ").strip()
+            q = input("\nYour question: ").strip()
         except (EOFError, KeyboardInterrupt):
             break
-        if q.lower() in ("вихід", "exit"):
+        if q.lower() == "exit":
             break
         if not q:
             continue
@@ -89,4 +92,4 @@ def chat_loop():
             continue
         print(answer)
         if sources:
-            print("Джерела:", format_sources(sources))
+            print("Sources:", format_sources(sources))
